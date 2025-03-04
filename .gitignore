@@ -1,0 +1,10 @@
+.vscode
+.env
+**/.env
+
+tmp/
+
+front/node_modules/
+front/.next/
+test/
+backend/static/

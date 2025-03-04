@@ -1,8 +1,11 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"image/jpeg"
+	"image/png"
 	"os"
 	"path"
 	"path/filepath"
@@ -29,7 +32,6 @@ var (
 
 func createAllocContext(headless bool) (context.Context, context.CancelFunc) {
 
-
 	_headless := headless
 
 	boolValue, err := strconv.ParseBool(GetEnv("HEADLESS", "true"))
@@ -46,12 +48,12 @@ func createAllocContext(headless bool) (context.Context, context.CancelFunc) {
 		//chromedp.Flag("no-sandbox", true),
 		chromedp.Flag("disable-extensions", true),
 	)
-	if (globalConfig.ChromeDP==""){
+	if globalConfig.ChromeDP == "" {
 		return chromedp.NewExecAllocator(context.Background(), opts...)
 	}
 	fmt.Println("use remote ", globalConfig.ChromeDP)
-	return  chromedp.NewRemoteAllocator(context.Background(), globalConfig.ChromeDP)
-	
+	return chromedp.NewRemoteAllocator(context.Background(), globalConfig.ChromeDP)
+
 }
 
 func loginChrome(url, userName, password string) error {
@@ -76,6 +78,7 @@ func loginChrome(url, userName, password string) error {
 }
 
 func loginGrafanaTasks(grfanaURL, username, password string) chromedp.Tasks {
+	println("t006", grfanaURL)
 	return chromedp.Tasks{
 		chromedp.Navigate(fmt.Sprintf("%s/login", grfanaURL)),
 		chromedp.ActionFunc(func(ctx context.Context) error {
@@ -112,10 +115,10 @@ func ScreenCaptureTasks(targetURLs []string, conn *MonitorConnection) (map[strin
 	defaultChromeContext, defaultChromeContextCancel := chromedp.NewContext(timeContext)
 	defer defaultChromeContextCancel()
 
-	fmt.Println(conn)
+	fmt.Println("t003", conn, targetURLs[0])
 	err := chromedp.Run(defaultChromeContext, loginGrafanaTasks(conn.URL, conn.Username, conn.Password))
 	if err != nil {
-		//panic(err)
+		fmt.Println("", err.Error())
 		return nil, fmt.Errorf("failed to capture screenshot for  %v", err)
 	}
 
@@ -148,9 +151,11 @@ func ScreenCaptureTasks(targetURLs []string, conn *MonitorConnection) (map[strin
 }
 
 func saveScreenshotToFile(data []byte) (string, error) {
-	// Generate a UUID for the file name
-	//fileName := fmt.Sprintf("%s.png", uuid.New().String())
-	//filePath := filepath.Join("static", fileName)
+	// 将PNG数据解码为image.Image
+	img, err := png.Decode(bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("failed to decode PNG: %v", err)
+	}
 
 	// 获取当前时间
 	now := time.Now()
@@ -160,19 +165,28 @@ func saveScreenshotToFile(data []byte) (string, error) {
 	month := fmt.Sprintf("%02d", now.Month())
 	day := fmt.Sprintf("%02d", now.Day())
 	dirPath := filepath.Join("static", "screenshots", year, month, day)
-	fileName := fmt.Sprintf("%s.png", uuid.New().String())
+	fileName := fmt.Sprintf("%s.jpg", uuid.New().String()) // 改为.jpg扩展名
 	filePath := filepath.Join(dirPath, fileName)
 
 	// 创建目录
-	err := os.MkdirAll(dirPath, 0755)
+	err = os.MkdirAll(dirPath, 0755)
 	if err != nil {
 		return "", err
 	}
 
-	// Write the screenshot data to the file
-	err = os.WriteFile(filePath, data, 0644)
+	// 创建输出文件
+	out, err := os.Create(filePath)
 	if err != nil {
 		return "", err
+	}
+	defer out.Close()
+
+	// 将图像编码为JPEG格式
+	opts := jpeg.Options{
+		Quality: 90,
+	}
+	if err := jpeg.Encode(out, img, &opts); err != nil {
+		return "", fmt.Errorf("failed to encode JPEG: %v", err)
 	}
 
 	return filePath, nil

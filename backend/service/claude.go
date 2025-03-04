@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
 	"text/template"
@@ -32,13 +33,13 @@ var (
 		pass : true 
 		reason: |
 			your answer
-
+	
 	context: 
 	{{.context}}
-
+	
 	condition:
 	{{.condition}}
-
+	
 	`
 
 	imageTextExtracPromptTemplate string = `
@@ -46,7 +47,7 @@ var (
 	
 	使用中文和JSON格式返回,返回的例子
 	{"text":###text exctract from image"}
-
+	
 	context: 
 	{{.context}}
 	`
@@ -54,17 +55,17 @@ var (
 	projectSummaryPromptTemplate string = `
 	Instruct: you are senior SRE , I give some metrics , you need analtyics and summary IT infrastructure issue or other thing
 you need provide detail information in summary and you need return use json and need include all raw metrics
-
-
+	
+	
 	health level:
 	Very Good , all metrics pass
 	Good,  95% mestrics pass 
 	Not Good 90% mestrics pass
 	Bad , less 90% pass 
 	Very Bad less 80% pass 
-
+	
 	metrics example:
-
+	
 	[{
             "id": 1,
             "project": "Project1",
@@ -89,10 +90,10 @@ you need provide detail information in summary and you need return use json and 
             "screen": "static/43ee21f9-1b3e-4b4d-9d1e-e4d50c9fca4d.png",
             "check_date": "2024-04-24T14:44:10+08:00"
 			}]
-
+	
 	input metrics
 	{{.metrics}}
-
+	
 	output is json , not include any markdown code, your summary, use '\"' replace, not use '"', must be correct json:
 	
 	{
@@ -174,7 +175,7 @@ func RunItemByID(id int64) (*MonitorMetric, error) {
 	}
 
 	fmt.Println(exitsConnection)
-	result, err := RunCondition(&exitsItem,&exitsConnection)
+	result, err := RunCondition(&exitsItem, &exitsConnection)
 	if err != nil {
 
 		return nil, err
@@ -246,11 +247,11 @@ func RunProjectSummary(items []MonitorMetric) (string, error) {
 
 }
 
-func RunCondition(item *MonitorMetric,connection *MonitorConnection) ([]string, error) {
+func RunCondition(item *MonitorMetric, connection *MonitorConnection) ([]string, error) {
 
 	result, err := ScreenCaptureTasks([]string{
 		item.DashboardURL,
-	},connection)
+	}, connection)
 
 	if err != nil {
 		return nil, err
@@ -272,7 +273,10 @@ func RunCondition(item *MonitorMetric,connection *MonitorConnection) ([]string, 
 		return nil, err
 	}
 
-	output := Claude3InvokWithImage(prompt, base64Content, true)
+	println("t010 prompt NO1:", prompt)
+
+	// output := Claude3InvokWithImage(prompt, base64Content, true)
+	output := BRConnectorInvokeWithImage(prompt, base64Content)
 	if output == nil {
 		return nil, err
 	}
@@ -290,7 +294,9 @@ func RunCondition(item *MonitorMetric,connection *MonitorConnection) ([]string, 
 		return nil, err
 	}
 
-	output = Claude3Invok(prompt)
+	println("t011 prompt NO2:", prompt)
+	// output = Claude3Invok(prompt)
+	output = BRConnectorInvokeWithImage(prompt, "")
 	if output == nil {
 		return nil, err
 	}
@@ -343,6 +349,144 @@ func PrintPrettyJSON(input interface{}) {
 		return
 	}
 	logger.Println(string(prettyJSON))
+}
+
+// Use OpenAI compatitable
+func BRConnectorInvokeWithImage(prompt string, base64Image string) *InvokeModelResponse {
+	fmt.Println("008 使用BRConnector 分析")
+	url := os.Getenv("BR_URL") + "/chat/completions"
+	bearerToken := os.Getenv("BR_API_KEY")
+	// bearerToken := ""
+	if bearerToken == "" {
+		logger.Println("Error: BR_API_KEY environment variable not set")
+		return nil
+	}
+	model := os.Getenv("BR_MODEL")
+
+	// 构建消息内容
+	var content []map[string]interface{}
+
+	// 添加文本内容
+	content = append(content, map[string]interface{}{
+		"type": "text",
+		"text": prompt,
+	})
+
+	// 如果有图片，添加图片内容
+	if base64Image != "" {
+		content = append(content, map[string]interface{}{
+			"type": "image_url",
+			"image_url": map[string]string{
+				"url": "data:image/jpeg;base64," + base64Image,
+			},
+		})
+	}
+
+	// 构建请求体
+	requestBody := map[string]interface{}{
+		"model": model,
+		"messages": []map[string]interface{}{
+			{
+				"role":    "user",
+				"content": content,
+			},
+		},
+	}
+
+	// 序列化请求体
+	jsonData, err := json.Marshal(requestBody)
+	if err != nil {
+		logger.Println("Error marshaling request body:", err)
+		return nil
+	}
+
+	// 创建HTTP请求
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
+	if err != nil {
+		logger.Println("Error creating HTTP request:", err)
+		return nil
+	}
+
+	// 设置请求头
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+	// 发送请求
+	client := &http.Client{Timeout: 60 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		logger.Println("Error sending HTTP request:", err)
+		return nil
+	}
+	defer resp.Body.Close()
+
+	// 读取响应体
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		logger.Println("Error reading response body:", err)
+		return nil
+	}
+
+	// 检查响应状态码
+	if resp.StatusCode != http.StatusOK {
+		logger.Printf("API returned non-200 status code: %d, body: %s", resp.StatusCode, string(body))
+		return nil
+	}
+
+	// 首先解析为临时结构
+	var openaiResp struct {
+		ID                string `json:"id"`
+		Object            string `json:"object"`
+		Created           int64  `json:"created"`
+		Model             string `json:"model"`
+		SystemFingerprint string `json:"system_fingerprint"`
+		Choices           []struct {
+			Index   int `json:"index"`
+			Message struct {
+				Role    string `json:"role"`
+				Content string `json:"content"`
+			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
+	}
+
+	err = json.Unmarshal(body, &openaiResp)
+	if err != nil {
+		logger.Println("Error unmarshaling OpenAI response:", err)
+		return nil
+	}
+
+	// 映射到 InvokeModelResponse 结构
+	response := &InvokeModelResponse{
+		ID:    openaiResp.ID,
+		Model: openaiResp.Model,
+		Type:  "text", // 固定值，因为我们知道这是文本响应
+		Role:  openaiResp.Choices[0].Message.Role,
+		Content: []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		}{
+			{
+				Type: "text",
+				Text: openaiResp.Choices[0].Message.Content,
+			},
+		},
+		StopReason: openaiResp.Choices[0].FinishReason,
+		Usage: struct {
+			InputTokens  int `json:"input_tokens"`
+			OutputTokens int `json:"output_tokens"`
+		}{
+			InputTokens:  openaiResp.Usage.PromptTokens,
+			OutputTokens: openaiResp.Usage.CompletionTokens,
+		},
+	}
+
+	return response
 }
 
 // Claude3InvokWithImage invokes the Claude 3 model with a prompt and an image

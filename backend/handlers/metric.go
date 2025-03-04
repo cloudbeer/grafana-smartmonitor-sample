@@ -26,17 +26,14 @@ func RunMetricByID(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Monitor Metric not found"})
 	}
 
-	
 	exitsConnection, err := service.GetMonitorConnectionByName(exitsMetric.ConnectionName)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Connection %s not found",exitsMetric.ConnectionName)})
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Connection %s not found", exitsMetric.ConnectionName)})
 	}
 
-	
-	fmt.Println(exitsConnection)
+	fmt.Println("tttt001", exitsConnection)
 
-
-	result, err := service.RunCondition(&exitsMetric,&exitsConnection)
+	result, err := service.RunCondition(&exitsMetric, &exitsConnection)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("ScreentCapture Faild %s", err)})
 		return
@@ -48,6 +45,14 @@ func RunMetricByID(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"checkResult Unmarshal error": err.Error()})
 		return
+	}
+
+	checkResultBytes, err := yaml.Marshal(checkResult)
+	if err != nil {
+		// 处理错误
+		fmt.Println("无法序列化 checkResult:", err)
+	} else {
+		fmt.Println("tt0002", string(checkResultBytes))
 	}
 
 	exitsMetric.Status = checkResult.Result.Pass
@@ -91,13 +96,13 @@ func CreateMonitorMetric(c *gin.Context) {
 		return
 	}
 
-	connection,err:=service.GetMonitorConnectionByName(newMonitorMetric.ConnectionName)
-	if err!=nil {
+	connection, err := service.GetMonitorConnectionByName(newMonitorMetric.ConnectionName)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
-		return 
+		return
 	}
 	// Add the new monitor Metric to the slice
-	newMonitorMetric.DashboardURL=service.ReplaceHost(connection.URL,newMonitorMetric.DashboardURL)
+	newMonitorMetric.DashboardURL = service.ReplaceHost(connection.URL, newMonitorMetric.DashboardURL)
 
 	id, err := service.InsertMonitorMetric(newMonitorMetric)
 	if err != nil {
@@ -124,14 +129,13 @@ func UpdateMonitorMetric(c *gin.Context) {
 		return
 	}
 
-	connection,err:=service.GetMonitorConnectionByName(newMonitorMetric.ConnectionName)
-	if err!=nil {
+	connection, err := service.GetMonitorConnectionByName(newMonitorMetric.ConnectionName)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err})
-		return 
+		return
 	}
 	// Add the new monitor Metric to the slice
-	newMonitorMetric.DashboardURL=service.ReplaceHost(connection.URL,newMonitorMetric.DashboardURL)
-
+	newMonitorMetric.DashboardURL = service.ReplaceHost(connection.URL, newMonitorMetric.DashboardURL)
 
 	err = service.UpdateMonitorMetric(newMonitorMetric)
 	if err != nil {

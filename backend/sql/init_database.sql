@@ -32,4 +32,4 @@ CREATE TABLE  IF NOT EXISTS  `monitor_connections` (
 ) AUTO_INCREMENT=10000;
 
 INSERT INTO monitor_connections (conn_name, conn_username, conn_password, conn_url)
-VALUES ('default_grafana', 'admin', 'your-secret-pw', 'http://localhost:3100');
+VALUES ('default_grafana', 'admin', 'tester', 'http://127.0.0.1:3100');
