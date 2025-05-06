@@ -232,7 +232,8 @@ func RunProjectSummary(items []MonitorMetric) (string, error) {
 		return "", err
 	}
 
-	output := Claude3Invok(prompt)
+	// output := Claude3Invok(prompt)
+	output := BRConnectorInvokeWithImage(prompt, "")
 	if output == nil {
 		return "", err
 	}

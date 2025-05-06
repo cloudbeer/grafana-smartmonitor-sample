@@ -128,7 +128,7 @@ func ScreenCaptureTasks(targetURLs []string, conn *MonitorConnection) (map[strin
 			chromedp.Navigate(url),
 			chromedp.WaitVisible(`.page-dashboard`),
 			//chromedp.WaitVisible(`div[aria-label='Panel loading bar']`),
-			chromedp.Sleep(2 * time.Second),
+			chromedp.Sleep(15 * time.Second),
 			//chromedp.WaitVisible(`div[class="graph-panel graph-panel--legend-right"]`),
 			chromedp.CaptureScreenshot(&buf),
 		}
